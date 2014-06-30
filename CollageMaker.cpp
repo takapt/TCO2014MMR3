@@ -716,6 +716,14 @@ private:
 };
 
 
+#ifdef LOCAL
+const double G_TLE = 3 * 1000;
+#else
+const double G_TLE = 9.6 * 1000;
+#endif
+
+Timer g_timer;
+
 class Solver
 {
 public:
@@ -819,20 +827,9 @@ public:
     {
         assert(solution.valid());
         ll best_score = sum_sq_diff(target, solution.make_collage());
-        rep(_, 1000)
+        rep(_, 400)
+//         while (g_timer.get_elapsed() < G_TLE)
         {
-            vector<pair<double, int>> ave_sq_diff(solution.size());
-            rep(i, solution.size())
-            {
-                Rect& r = solution.rect(i);
-                assert(r.valid(target.width(), target.height()));
-
-                Image scaled = source[solution.source_index(i)].scale(r.width(), r.height());
-                ll ssd = sum_sq_diff(target, r, scaled);
-                ave_sq_diff.push_back(make_pair(double(ssd) / (r.width() * r.height()), i));
-            }
-            sort(all(ave_sq_diff));
-
             int expand_i = rand() % solution.size();
             Solution nsol = expand(solution, expand_i);
             if (nsol.size() == 0)
@@ -873,16 +870,11 @@ public:
                 ll score = sum_sq_diff(target, nsol.make_collage());
                 if (score < best_score)
                 {
-                    fprintf(stderr, "%4d: %3d, %.5f\n", _, nsol.size(), score_collage(target, nsol.make_collage()));
+//                     fprintf(stderr, "%4d: %3d, %.5f\n", _, nsol.size(), score_collage(target, nsol.make_collage()));
                     best_score = score;
                     solution = nsol;
                 }
             }
-//             int ranran = rand() % 100;
-
-//             if (ranran < 50)
-//             {
-//             }
         }
 
         return solution;
@@ -933,6 +925,9 @@ class CollageMaker
 public:
     vector<int> compose(vector<int>& data)
     {
+        g_timer.start();
+
+
         int stream_i = 0;
         Image target = input_image(data, stream_i);
         vector<Image> source;
