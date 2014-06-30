@@ -717,7 +717,7 @@ private:
 
 
 #ifdef LOCAL
-const double G_TLE = 3 * 1000;
+const double G_TLE = 5 * 3 * 1000;
 #else
 const double G_TLE = 9.6 * 1000;
 #endif
@@ -827,8 +827,8 @@ public:
     {
         assert(solution.valid());
         ll best_score = sum_sq_diff(target, solution.make_collage());
-        rep(_, 400)
-//         while (g_timer.get_elapsed() < G_TLE)
+//         rep(_, 400)
+        while (g_timer.get_elapsed() < G_TLE)
         {
             int expand_i = rand() % solution.size();
             Solution nsol = expand(solution, expand_i);
