@@ -316,6 +316,56 @@ public:
     int top() const { return pos_.y; }
     int bottom() const { return pos_.y + height(); }
 
+    void expand_right(int a)
+    {
+        w_ += a;
+    }
+    void expand_left(int a)
+    {
+        pos_.x -= a;
+        w_ += a;
+    }
+    void expand_bottom(int a)
+    {
+        h_ += a;
+    }
+    void expand_top(int a)
+    {
+        pos_.y -= a;
+        h_ += a;
+    }
+    void expand(Dir dir, int a)
+    {
+        switch (dir)
+        {
+            case LEFT:
+                expand_left(a);
+                break;
+            case RIGHT:
+                expand_right(a);
+                break;
+            case UP:
+                expand_top(a);
+                break;
+            case DOWN:
+                expand_bottom(a);
+                break;
+        }
+    }
+
+    bool intersect(const Rect& other) const
+    {
+        return left() <= other.right() - 1 && right() - 1 >= other.left()
+            && top() <= other.bottom() - 1 && bottom() - 1 >= other.top();
+    }
+
+    bool valid(int w, int h) const
+    {
+        return width() > 0 && height() > 0
+            && left() >= 0 && right() <= w
+            && top() >= 0 && bottom() <= h;
+    }
+
     Pos pos_;
     int w_, h_;
 };
@@ -326,14 +376,14 @@ public:
     Image(int w, int h, const vector<int>& data, int& stream_i)
         : w_(w), h_(h)
     {
+        a = vector<vector<int>>(h, vector<int>(w));
         rep(i, w * h)
             at(i % w, i / w) = data[stream_i++];
     }
     Image(int w, int h)
         : w_(w), h_(h)
     {
-        rep(y, h) rep(x, w)
-            at(x, y) = 0;
+        a = vector<vector<int>>(h, vector<int>(w));
     }
 
     Image()
@@ -365,8 +415,17 @@ public:
         return trimed;
     }
 
+    void replace(int lx, int ly, Image& image)
+    {
+        rep(y, image.height()) rep(x, image.width())
+            at(lx + x, ly + y) = image.at(x, y);
+    }
+
     Image scale(int new_w, int new_h)
     {
+        assert(0 < new_w && new_w <= width());
+        assert(0 < new_h && new_h <= height());
+
         vector<int> ori_ys, new_ys, inter_ys;
         rep(i, height())
         {
@@ -422,7 +481,8 @@ public:
 
 private:
     int w_, h_;
-    int a[512][512];
+//     int a[512][512];
+    vector<vector<int>> a;
 };
 
 template <typename T>
@@ -470,7 +530,7 @@ private:
 };
 
 
-ll sum_sq_diff(Image& target, Image& collage)
+ll sum_sq_diff(Image& target, Image collage)
 {
     assert(target.width() == collage.width());
     assert(target.height() == collage.height());
@@ -478,14 +538,28 @@ ll sum_sq_diff(Image& target, Image& collage)
     ll sum = 0;
     rep(y, target.height()) rep(x, target.width())
     {
-        assert(0 <= collage.at(x, y) && collage.at(x, y) < 256);
-
         int diff = target.at(x, y) - collage.at(x, y);
         sum += diff * diff;
     }
     return sum;
 }
-double score_collage(Image& target, Image& collage)
+
+ll sum_sq_diff(Image& target, Rect& rect, Image& collage)
+{
+    if (!(rect.valid(target.width(), target.height())))
+        fprintf(stderr, "%d %d %d %d\n", rect.pos().x, rect.pos().y, rect.width(), rect.height());
+    assert(rect.valid(target.width(), target.height()));
+
+    ll sum = 0;
+    rep(y, rect.height()) rep(x, rect.width())
+    {
+        int diff = target.at(rect.pos().x + x, rect.pos().y + y) - collage.at(x, y);
+        sum += diff * diff;
+    }
+    return sum;
+}
+
+double score_collage(Image& target, Image collage)
 {
     return sqrt(double(sum_sq_diff(target, collage)) / (target.height() * target.width()));
 }
@@ -518,92 +592,318 @@ vector<Rect> list_spaces(Array2D<bool> used, int max_width = 50, int max_height 
                 ++hy;
 
             int hx = lx + 1;
-            while (hx < used.width() && hx - lx < max_width && !used.at(hx, hy - 1))
+            while (hx < used.width() && hx - lx < max_width)
+            {
+                bool ok = true;
+                for (int y = ly; y < hy; ++y)
+                    ok &= !used.at(hx, y);
+                if (!ok)
+                    break;
+
                 ++hx;
+            }
 
             spaces.push_back(Rect(Pos(lx, ly), hx - lx, hy - ly));
             assert(spaces.back().width() <= max_width);
             assert(spaces.back().height() <= max_height);
 
             for (int y = ly; y < hy; ++y)
+            {
                 for (int x = lx; x < hx; ++x)
+                {
+                    assert(!used.at(x, y));
                     used.at(x, y) = true;
+                }
+            }
         }
     }
 #ifndef NDEBUG
-    rep(y, height()) rep(x, width())
+    rep(y, used.height()) rep(x, used.width())
         assert(used.at(x, y));
 #endif
     return spaces;
 };
 
-vector<int> match_images(Image& target, vector<Rect>& target_rects, vector<Image>& source)
+class Solution
 {
-    PrimalDual<int, ll> pd(source.size() + target_rects.size() + 2);
-    const int target_begin = source.size();
-    rep(j, target_rects.size())
+public:
+    Solution(Image& target, vector<Image>& source)
+        : target(&target), source(&source)
     {
-        Image tage = target.trim(target_rects[j]);
-        rep(i, source.size())
+    }
+
+    void add(const Rect& rect, int source_index)
+    {
+        rects.push_back(rect);
+        indices.push_back(source_index);
+    }
+
+    int size() const
+    {
+        assert(rects.size() == indices.size());
+        return rects.size();
+    }
+
+    Rect& rect(int i)
+    {
+        assert(i < size());
+        return rects[i];
+    }
+    int source_index(int i)
+    {
+        assert(i < size());
+        return indices[i];
+    }
+
+    Image make_collage()
+    {
+        Image collage(target->width(), target->height());
+        rep(i, size())
         {
-            if (source[i].width() < tage.width() || source[i].height() < tage.height())
+            Rect& r = rect(i);
+            Image scaled = (*source)[source_index(i)].scale(r.width(), r.height());
+            collage.replace(r.pos().x, r.pos().y, scaled);
+        }
+        return collage;
+    }
+
+    vector<Rect> list_spaces()
+    {
+        Array2D<bool> used(target->width(), target->height(), false);
+        for (auto& r : rects)
+        {
+            rep(y, r.height()) rep(x, r.width())
+                used.at(r.pos().x + x, r.pos().y + y) = true;
+        }
+        return ::list_spaces(used);
+    }
+
+    vector<bool> used_source_table() const
+    {
+        vector<bool> used(SOURCE_IMAGES);
+        for (int i : indices)
+            used[i] = true;
+        return used;
+    }
+
+    bool valid()
+    {
+        rep(i, size()) rep(j, i)
+        {
+            if (indices[i] == indices[j])
             {
-                pd.add_edge(i, target_begin + j, 0, ten(15));
+                abort();
+                return false;
             }
-            else
+            if (rects[i].intersect(rects[j]))
             {
-                Image scaled = source[i].scale(tage.width(), tage.height());
-                ll d = sum_sq_diff(tage, scaled);
-                pd.add_edge(i, target_begin + j, 1, d);
+                fprintf(stderr, "%3d %3d %3d %3d\n", rects[i].left(), rects[i].right(), rects[i].top(), rects[i].bottom());
+                fprintf(stderr, "%3d %3d %3d %3d\n", rects[j].left(), rects[j].right(), rects[j].top(), rects[j].bottom());
+                abort();
+                return false;
             }
         }
-    }
-    const int src = source.size() + target_rects.size();
-    const int sink = src + 1;
-    rep(i, source.size())
-        pd.add_edge(src, i, 1, 0);
-    rep(j, target_rects.size())
-        pd.add_edge(target_begin + j, sink, 1, 0);
-    ll min_cost = pd.min_cost_flow(src, sink, target_rects.size());
-    assert(min_cost >= 0);
-    assert(min_cost < ten(12));
 
-    vector<int> used_source_index(target_rects.size(), -1);
-    rep(i, source.size()) rep(j, target_rects.size())
-    {
-        if (pd.g[pd.g[i][j].to][pd.g[i][j].rev].cap == 1)
-            used_source_index[j] = i;
+        return true;
     }
-    return used_source_index;
-}
-vector<Rect> solve(Image& target, vector<Image>& source)
+
+private:
+    vector<Rect> rects;
+    vector<int> indices;
+
+    Image* target;
+    vector<Image>* source;
+};
+
+
+class Solver
 {
-    //         const int rows = 10;
-    //         const int cols = SOURCE_IMAGES / rows;
-    int rows = 7, cols = 7;
-    vector<int> ys;
-    rep(yi, rows)
-        ys.push_back(target.height() / rows * yi);
-    ys.push_back(target.height());
-    vector<int> xs;
-    rep(xi, cols)
-        xs.push_back(target.width() / cols * xi);
-    xs.push_back(target.width());
-
-    vector<Rect> target_rects;
-    rep(i, rows * cols)
+public:
+    Solver(Image& target, vector<Image>& source)
+        : target(target), source(source)
     {
-        const int xi = i % cols;
-        const int yi = i / cols;
-        target_rects.push_back(Rect(Pos(xs[xi], ys[yi]), xs[xi + 1] - xs[xi], ys[yi + 1] - ys[yi]));
     }
 
-    vector<Rect> result_rects(SOURCE_IMAGES, Rect(Pos(-114514, 1919810), -1, -1));
-    vector<int> used_source_index = match_images(target, target_rects, source);
-    rep(i, target_rects.size())
-        result_rects[used_source_index[i]] = target_rects[i];
-    return result_rects;
-}
+    Solution match_images(vector<Rect>& target_rects)
+    {
+        PrimalDual<int, ll> pd(source.size() + target_rects.size() + 2);
+        const int target_begin = source.size();
+        rep(j, target_rects.size())
+        {
+            Image tage = target.trim(target_rects[j]);
+            rep(i, source.size())
+            {
+                if (source[i].width() < tage.width() || source[i].height() < tage.height())
+                {
+                    pd.add_edge(i, target_begin + j, 0, ten(15));
+                }
+                else
+                {
+                    Image scaled = source[i].scale(tage.width(), tage.height());
+                    ll d = sum_sq_diff(tage, scaled);
+                    pd.add_edge(i, target_begin + j, 1, d);
+                }
+            }
+        }
+        const int src = source.size() + target_rects.size();
+        const int sink = src + 1;
+        rep(i, source.size())
+            pd.add_edge(src, i, 1, 0);
+        rep(j, target_rects.size())
+            pd.add_edge(target_begin + j, sink, 1, 0);
+        ll min_cost = pd.min_cost_flow(src, sink, target_rects.size());
+        assert(min_cost >= 0);
+        assert(min_cost < ten(12));
+
+        Solution solution(target, source);
+        rep(i, source.size()) rep(j, target_rects.size())
+        {
+            if (pd.g[pd.g[i][j].to][pd.g[i][j].rev].cap == 1)
+                solution.add(target_rects[j], i);
+        }
+        return solution;
+    }
+
+
+    vector<Rect> grid_rects(int width, int height, int rows, int cols)
+    {
+        vector<int> ys;
+        rep(yi, rows)
+            ys.push_back(height / rows * yi);
+        ys.push_back(height);
+        vector<int> xs;
+        rep(xi, cols)
+            xs.push_back(width / cols * xi);
+        xs.push_back(width);
+
+        vector<Rect> target_rects;
+        rep(yi, rows) rep(xi, cols)
+            target_rects.push_back(Rect(Pos(xs[xi], ys[yi]), xs[xi + 1] - xs[xi], ys[yi + 1] - ys[yi]));
+        return target_rects;
+    }
+
+    Solution expand(Solution solution, int expand_i)
+    {
+        Rect& r = solution.rect(expand_i);
+        Image& image = source[solution.source_index(expand_i)];
+
+        const int rem_w = image.width() - r.width();
+        const int rem_h = image.height() - r.height();
+        assert(rem_w >= 0);
+        assert(rem_h >= 0);
+
+        Dir dir = Dir(rand() % 4);
+        int div = (dir == LEFT || dir == RIGHT ? rem_w : rem_h);
+        if (div == 0)
+            return empty_solution();
+        int len = 1 + rand() % div;
+        r.expand(dir, len);
+        if (r.width() > image.width() || r.height() > image.height() || !r.valid(target.width(), target.height()))
+            return empty_solution();
+
+        Solution res = empty_solution();
+        rep(i, solution.size())
+        {
+            if (i != expand_i && r.intersect(solution.rect(i)))
+                solution.rect(i).expand(rev_dir(dir), -len);
+
+            if (solution.rect(i).valid(target.width(), target.height()))
+                res.add(solution.rect(i), solution.source_index(i));
+        }
+        return res;
+    }
+
+    Solution empty_solution() { return Solution(target, source); }
+
+    Solution improve(Solution solution)
+    {
+        assert(solution.valid());
+        ll best_score = sum_sq_diff(target, solution.make_collage());
+        rep(_, 1000)
+        {
+            vector<pair<double, int>> ave_sq_diff(solution.size());
+            rep(i, solution.size())
+            {
+                Rect& r = solution.rect(i);
+                assert(r.valid(target.width(), target.height()));
+
+                Image scaled = source[solution.source_index(i)].scale(r.width(), r.height());
+                ll ssd = sum_sq_diff(target, r, scaled);
+                ave_sq_diff.push_back(make_pair(double(ssd) / (r.width() * r.height()), i));
+            }
+            sort(all(ave_sq_diff));
+
+            int expand_i = rand() % solution.size();
+            Solution nsol = expand(solution, expand_i);
+            if (nsol.size() == 0)
+                continue;
+
+            bool ok = true;
+            vector<bool> used = nsol.used_source_table();
+            vector<Rect> spaces = nsol.list_spaces();
+            for (auto& space : spaces)
+            {
+                int best_i = -1;
+                ll best_score = ten(18);
+                rep(i, source.size())
+                {
+                    if (!used[i] && source[i].width() >= space.width() && source[i].height() >= space.height())
+                    {
+                        Image scaled = source[i].scale(space.width(), space.height());
+                        ll score = sum_sq_diff(target, space, scaled);
+                        if (score < best_score)
+                        {
+                            best_score = score;
+                            best_i = i;
+                        }
+                    }
+                }
+                if (best_i == -1)
+                {
+                    ok = false;
+                    break;
+                }
+
+                used[best_i] = true;
+                nsol.add(space, best_i);
+            }
+            if (ok)
+            {
+                assert(nsol.valid());
+                ll score = sum_sq_diff(target, nsol.make_collage());
+                if (score < best_score)
+                {
+                    fprintf(stderr, "%4d: %3d, %.5f\n", _, nsol.size(), score_collage(target, nsol.make_collage()));
+                    best_score = score;
+                    solution = nsol;
+                }
+            }
+//             int ranran = rand() % 100;
+
+//             if (ranran < 50)
+//             {
+//             }
+        }
+
+        return solution;
+    }
+
+    Solution solve()
+    {
+        vector<Rect> target_rects = grid_rects(target.width(), target.height(), 7, 7);
+        Solution solution = match_images(target_rects);
+        assert(solution.valid());
+
+        solution = improve(solution);
+        assert(solution.valid());
+
+        return solution;
+    }
+
+private:
+    Image target;
+    vector<Image> source;
+};
 
 void analyze(vector<Image> images)
 {
@@ -639,8 +939,10 @@ public:
         rep(i, SOURCE_IMAGES)
             source.push_back(input_image(data, stream_i));
 
-        vector<Rect> result_rects = solve(target, source);
-
+        Solution solution = Solver(target, source).solve();
+        vector<Rect> result_rects(SOURCE_IMAGES, Rect(Pos(-114514, 1919810), -1, -1));
+        rep(i, solution.size())
+            result_rects[solution.source_index(i)] = solution.rect(i);
         return make_result(result_rects);
     }
 
