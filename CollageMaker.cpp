@@ -425,22 +425,69 @@ private:
     int a[512][512];
 };
 
+template <typename T>
+class Array2D
+{
+public:
+    Array2D(int w, int h)
+        : w_(w), h_(h)
+    {
+    }
 
-double score_collage(Image& target, Image& collage)
+    Array2D(int w, int h, const T& init_val)
+        : w_(w), h_(h)
+    {
+        clear(init_val);
+    }
+
+    Array2D()
+        : w_(-114514), h_(-1919810)
+    {
+    }
+
+    int width() const { return w_; }
+    int height() const { return h_; }
+
+    T& at(int x, int y)
+    {
+        assert(in_rect(x, y, width(), height()));
+        return a[y][x];
+    }
+    T& at(const Pos& pos)
+    {
+        return at(pos.x, pos.y);
+    }
+
+    void clear(const T& val)
+    {
+        rep(y, height()) rep(x, width())
+            at(x, y) = val;
+    }
+
+private:
+    int w_, h_;
+    T a[512][512];
+};
+
+
+ll sum_sq_diff(Image& target, Image& collage)
 {
     assert(target.width() == collage.width());
     assert(target.height() == collage.height());
 
-    double score = 0;
+    ll sum = 0;
     rep(y, target.height()) rep(x, target.width())
     {
         assert(0 <= collage.at(x, y) && collage.at(x, y) < 256);
 
         int diff = target.at(x, y) - collage.at(x, y);
-        score += diff * diff;
+        sum += diff * diff;
     }
-
-    return sqrt(score / (target.height() * target.width()));
+    return sum;
+}
+double score_collage(Image& target, Image& collage)
+{
+    return sqrt(double(sum_sq_diff(target, collage)) / (target.height() * target.width()));
 }
 
 Image make_collage(int w, int h, vector<Image>& source, vector<Rect>& target_rects)
@@ -459,70 +506,104 @@ Image make_collage(int w, int h, vector<Image>& source, vector<Rect>& target_rec
     return collage;
 }
 
-class Solver
+vector<Rect> list_spaces(Array2D<bool> used, int max_width = 50, int max_height = 50)
 {
-public:
-    vector<Rect> solve(Image& target, vector<Image>& source)
+    vector<Rect> spaces;
+    rep(ly, used.height()) rep(lx, used.width())
     {
-//         const int rows = 10;
-//         const int cols = SOURCE_IMAGES / rows;
-        int rows = 7, cols = 7;
-        vector<int> ys;
-        rep(yi, rows)
-            ys.push_back(target.height() / rows * yi);
-        ys.push_back(target.height());
-        vector<int> xs;
-        rep(xi, cols)
-            xs.push_back(target.width() / cols * xi);
-        xs.push_back(target.width());
-
-        vector<Rect> target_rects;
-        rep(i, rows * cols)
+        if (!used.at(lx, ly))
         {
-            const int xi = i % cols;
-            const int yi = i / cols;
-            target_rects.push_back(Rect(Pos(xs[xi], ys[yi]), xs[xi + 1] - xs[xi], ys[yi + 1] - ys[yi]));
+            int hy = ly + 1;
+            while (hy < used.height() && hy - ly < max_height && !used.at(lx, hy))
+                ++hy;
+
+            int hx = lx + 1;
+            while (hx < used.width() && hx - lx < max_width && !used.at(hx, hy - 1))
+                ++hx;
+
+            spaces.push_back(Rect(Pos(lx, ly), hx - lx, hy - ly));
+            assert(spaces.back().width() <= max_width);
+            assert(spaces.back().height() <= max_height);
+
+            for (int y = ly; y < hy; ++y)
+                for (int x = lx; x < hx; ++x)
+                    used.at(x, y) = true;
         }
+    }
+#ifndef NDEBUG
+    rep(y, height()) rep(x, width())
+        assert(used.at(x, y));
+#endif
+    return spaces;
+};
 
-
-        PrimalDual<int, double> pd(source.size() + target_rects.size() + 2);
-        const int target_begin = source.size();
-        rep(j, target_rects.size())
+vector<int> match_images(Image& target, vector<Rect>& target_rects, vector<Image>& source)
+{
+    PrimalDual<int, ll> pd(source.size() + target_rects.size() + 2);
+    const int target_begin = source.size();
+    rep(j, target_rects.size())
+    {
+        Image tage = target.trim(target_rects[j]);
+        rep(i, source.size())
         {
-            Image tage = target.trim(target_rects[j]);
-            rep(i, source.size())
+            if (source[i].width() < tage.width() || source[i].height() < tage.height())
             {
-                if (source[i].width() < tage.width() || source[i].height() < tage.height())
-                {
-                    pd.add_edge(i, target_begin + j, 1, 1e60);
-                }
-                else
-                {
-                    Image scaled = source[i].scale(tage.width(), tage.height());
-                    double score = score_collage(tage, scaled);
-                    pd.add_edge(i, target_begin + j, 1, score);
-                }
+                pd.add_edge(i, target_begin + j, 0, ten(15));
+            }
+            else
+            {
+                Image scaled = source[i].scale(tage.width(), tage.height());
+                ll d = sum_sq_diff(tage, scaled);
+                pd.add_edge(i, target_begin + j, 1, d);
             }
         }
-        const int src = source.size() + target_rects.size();
-        const int sink = src + 1;
-        rep(i, source.size())
-            pd.add_edge(src, i, 1, 0);
-        rep(j, target_rects.size())
-            pd.add_edge(target_begin + j, sink, 1, 0);
-        double min_cost = pd.min_cost_flow(src, sink, target_rects.size());
-        assert(min_cost >= 0);
-        assert(min_cost < 1e50);
-
-        vector<Rect> result_rects(SOURCE_IMAGES, Rect(Pos(-1919, 810), -1, -1));
-        rep(i, source.size()) rep(j, target_rects.size())
-        {
-            if (pd.g[i][j].cap == 0)
-                result_rects[i] = target_rects[j];
-        }
-        return result_rects;
     }
-};
+    const int src = source.size() + target_rects.size();
+    const int sink = src + 1;
+    rep(i, source.size())
+        pd.add_edge(src, i, 1, 0);
+    rep(j, target_rects.size())
+        pd.add_edge(target_begin + j, sink, 1, 0);
+    ll min_cost = pd.min_cost_flow(src, sink, target_rects.size());
+    assert(min_cost >= 0);
+    assert(min_cost < ten(12));
+
+    vector<int> used_source_index(target_rects.size(), -1);
+    rep(i, source.size()) rep(j, target_rects.size())
+    {
+        if (pd.g[pd.g[i][j].to][pd.g[i][j].rev].cap == 1)
+            used_source_index[j] = i;
+    }
+    return used_source_index;
+}
+vector<Rect> solve(Image& target, vector<Image>& source)
+{
+    //         const int rows = 10;
+    //         const int cols = SOURCE_IMAGES / rows;
+    int rows = 7, cols = 7;
+    vector<int> ys;
+    rep(yi, rows)
+        ys.push_back(target.height() / rows * yi);
+    ys.push_back(target.height());
+    vector<int> xs;
+    rep(xi, cols)
+        xs.push_back(target.width() / cols * xi);
+    xs.push_back(target.width());
+
+    vector<Rect> target_rects;
+    rep(i, rows * cols)
+    {
+        const int xi = i % cols;
+        const int yi = i / cols;
+        target_rects.push_back(Rect(Pos(xs[xi], ys[yi]), xs[xi + 1] - xs[xi], ys[yi + 1] - ys[yi]));
+    }
+
+    vector<Rect> result_rects(SOURCE_IMAGES, Rect(Pos(-114514, 1919810), -1, -1));
+    vector<int> used_source_index = match_images(target, target_rects, source);
+    rep(i, target_rects.size())
+        result_rects[used_source_index[i]] = target_rects[i];
+    return result_rects;
+}
 
 void analyze(vector<Image> images)
 {
@@ -558,15 +639,7 @@ public:
         rep(i, SOURCE_IMAGES)
             source.push_back(input_image(data, stream_i));
 
-//         analyze(source);
-//         exit(1);
-
-
-        vector<Rect> result_rects = Solver().solve(target, source);
-
-//         Image collage = make_collage(target.width(), target.height(), source, result_rects);
-//         dump(score_collage(target, collage));
-
+        vector<Rect> result_rects = solve(target, source);
 
         return make_result(result_rects);
     }
