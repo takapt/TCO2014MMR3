@@ -26,12 +26,17 @@ def get_score(seed):
     score = float(output.split()[-1])
     exe_time = time.time() - start
 
-    return {'score': score, 'time': exe_time}
+    return {'seed': seed, 'score': score, 'time': exe_time}
 
 
 try:
-    for seed in range(1, 100):
-        result = get_score(seed)
+    from multiprocessing import Pool
+    pool = Pool()
+    results = pool.map(get_score, range(1, 30))
+#     for seed in range(1, 1000):
+#         result = get_score(seed)
+    for result in results:
+        seed = result['seed']
         print('{:4d} {:3.3f} {:.3f}'.format(seed, result['score'], result['time']))
         sys.stdout.flush()
 finally:

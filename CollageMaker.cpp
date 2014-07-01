@@ -920,20 +920,20 @@ public:
         {
 //             if (l_timer.get_elapsed() > tle)
 //                 break;
-            if (loop > 10000)
+            if (loop > 2000)
                 break;
 
             const vector<int> ui = solution.used_indices();
             Solution nsol;
             int ra = rand() % 1000;
-            if (ra == 0)
-            {
-                double prev = score_collage(target, solution.make_collage());
-                nsol = match_images(solution.used_rects());
-                double cur = score_collage(target, nsol.make_collage());
-                fprintf(stderr, "%.4f -> %.4f\n", prev, cur);
-            }
-            else
+//             if (ra == 0)
+//             {
+// //                 double prev = score_collage(target, solution.make_collage());
+//                 nsol = match_images(solution.used_rects());
+// //                 double cur = score_collage(target, nsol.make_collage());
+// //                 fprintf(stderr, "%.4f -> %.4f\n", prev, cur);
+//             }
+//             else
             if (ra < 900)
             {
                 int expand_i = rand() % ui.size();
