@@ -918,14 +918,22 @@ public:
         ll best_score = cur_score;
         for (int loop = 0; ; ++loop)
         {
-            if (l_timer.get_elapsed() > tle)
-                break;
-//             if (loop > 10000)
+//             if (l_timer.get_elapsed() > tle)
 //                 break;
+            if (loop > 10000)
+                break;
 
             const vector<int> ui = solution.used_indices();
             Solution nsol;
             int ra = rand() % 1000;
+            if (ra == 0)
+            {
+                double prev = score_collage(target, solution.make_collage());
+                nsol = match_images(solution.used_rects());
+                double cur = score_collage(target, nsol.make_collage());
+                fprintf(stderr, "%.4f -> %.4f\n", prev, cur);
+            }
+            else
             if (ra < 900)
             {
                 int expand_i = rand() % ui.size();
@@ -947,6 +955,7 @@ public:
                 ll score = cur_score + diff_sum_sq_diff(nsol, solution);
                 assert(score == sum_sq_diff(target, nsol.make_collage()));
                 if (score < best_score)
+//                 if (score < best_score * 0.999)
                 {
                     fprintf(stderr, "%4d: %3d, %.5f\n", loop, (int)nsol.used_indices().size(), sqrt(double(score) / (target.width() * target.height())));
                     best_score = score;
