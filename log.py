@@ -30,14 +30,17 @@ def get_score(seed):
 
 
 try:
-    from multiprocessing import Pool
-    pool = Pool()
-    results = pool.map(get_score, range(1, 30))
-#     for seed in range(1, 1000):
-#         result = get_score(seed)
-    for result in results:
-        seed = result['seed']
+    for seed in range(1, 1000):
+        result = get_score(seed)
         print('{:4d} {:3.3f} {:.3f}'.format(seed, result['score'], result['time']))
         sys.stdout.flush()
+
+#     from multiprocessing import Pool
+#     pool = Pool()
+#     results = pool.map(get_score, range(1, 30))
+#     for result in results:
+#         seed = result['seed']
+#         print('{:4d} {:3.3f} {:.3f}'.format(seed, result['score'], result['time']))
+#         sys.stdout.flush()
 finally:
     os.remove(copied_exe_path)
