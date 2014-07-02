@@ -292,6 +292,7 @@ public:
     }
 
     Pos& pos() { return pos_; }
+    const Pos& pos() const { return pos_; }
     int width() const { return w_; }
     int height() const { return h_; }
 
@@ -385,7 +386,7 @@ namespace std
         return os;
     }
 
-    ostream& operator<<(ostream& os, Rect& r)
+    ostream& operator<<(ostream& os, const Rect& r)
     {
         os << r.pos() << ", ";
         char buf[256];
@@ -430,7 +431,17 @@ public:
         return at(pos.x, pos.y);
     }
 
-    Image trim(Rect& rect)
+    Pixel at(int x, int y) const
+    {
+        assert(in_rect(x, y, width(), height()));
+        return a[y][x];
+    }
+    Pixel at(const Pos& pos) const
+    {
+        return at(pos.x, pos.y);
+    }
+
+    Image trim(const Rect& rect) const
     {
         assert(in_rect(rect.left(), rect.top(), width(), height()));
         assert(in_rect(rect.right() - 1, rect.bottom() - 1, width(), height()));
@@ -441,18 +452,21 @@ public:
         return trimed;
     }
 
-    void replace(int lx, int ly, Image& image)
+    void replace(int lx, int ly, const Image& image)
     {
         rep(y, image.height()) rep(x, image.width())
             at(lx + x, ly + y) = image.at(x, y);
     }
 
-    Image scale(int new_w, int new_h)
+    Image scale(int new_w, int new_h) const
     {
 //         assert(0 < new_w && new_w <= width());
 //         assert(0 < new_h && new_h <= height());
 
-        vector<int> ori_ys, new_ys, inter_ys;
+        static vector<int> ori_ys, new_ys, inter_ys;
+        ori_ys.clear();
+        new_ys.clear();
+        inter_ys.clear();
         rep(i, height())
         {
             int y1 = i * new_h, y2 = y1 + new_h;
@@ -468,7 +482,10 @@ public:
                 }
             }
         }
-        vector<int> ori_xs, new_xs, inter_xs;
+        static vector<int> ori_xs, new_xs, inter_xs;
+        ori_xs.clear();
+        new_xs.clear();
+        inter_xs.clear();
         rep(i, width())
         {
             int x1 = i * new_w, x2 = x1 + new_w;
@@ -555,7 +572,7 @@ private:
 };
 
 
-ll sum_sq_diff(Image& target, Image collage)
+ll sum_sq_diff(const Image& target, const Image& collage)
 {
     assert(target.width() == collage.width());
     assert(target.height() == collage.height());
@@ -569,7 +586,7 @@ ll sum_sq_diff(Image& target, Image collage)
     return sum;
 }
 
-ll sum_sq_diff(Image& target, Rect& rect, Image collage)
+ll sum_sq_diff(const Image& target, const Rect& rect, const Image& collage)
 {
     assert(rect.valid(target.width(), target.height()));
     assert(rect.width() == collage.width() && rect.height() == collage.height());
@@ -583,7 +600,7 @@ ll sum_sq_diff(Image& target, Rect& rect, Image collage)
     return sum;
 }
 
-double score_collage(Image& target, Image collage)
+double score_collage(const Image& target, const Image& collage)
 {
     return sqrt(double(sum_sq_diff(target, collage)) / (target.height() * target.width()));
 }
@@ -606,7 +623,8 @@ Image make_collage(int w, int h, vector<Image>& source, vector<Rect>& target_rec
 
 vector<Rect> list_spaces(Array2D<bool>& used, int max_width = 50, int max_height = 50)
 {
-    vector<Rect> spaces;
+    static vector<Rect> spaces;
+    spaces.clear();
     rep(ly, used.height()) rep(lx, used.width())
     {
         if (!used.at(lx, ly))
@@ -665,6 +683,11 @@ public:
         assert(0 <= i && i < (int)rects.size());
         return rects[i];
     }
+    const Rect& rect(int i) const
+    {
+        assert(0 <= i && i < (int)rects.size());
+        return rects[i];
+    }
 
     vector<int> used_indices() const
     {
@@ -676,19 +699,19 @@ public:
         return res;
     }
 
-    Image make_collage()
+    Image make_collage() const
     {
         Image collage(target->width(), target->height());
         for (int i : used_indices())
         {
-            Rect& r = rect(i);
+            const Rect& r = rect(i);
             Image scaled = (*source)[i].scale(r.width(), r.height());
             collage.replace(r.pos().x, r.pos().y, scaled);
         }
         return collage;
     }
 
-    vector<Rect> list_spaces(int max_width, int max_height)
+    vector<Rect> list_spaces(int max_width, int max_height) const
     {
         Array2D<bool> used(target->width(), target->height(), false);
         for (auto& r : rects)
@@ -707,19 +730,14 @@ public:
         return used;
     }
 
-    bool valid()
+    bool valid() const
     {
         vector<int> ui = used_indices();
         rep(ii, ui.size()) rep(jj, ii)
         {
             int i = ui[ii], j = ui[jj];
             if (rects[i].intersect(rects[j]))
-            {
-                fprintf(stderr, "%3d %3d %3d %3d\n", rects[i].left(), rects[i].right(), rects[i].top(), rects[i].bottom());
-                fprintf(stderr, "%3d %3d %3d %3d\n", rects[j].left(), rects[j].right(), rects[j].top(), rects[j].bottom());
-                abort();
                 return false;
-            }
         }
 
         return true;
@@ -742,7 +760,7 @@ private:
 
 
 #ifdef LOCAL
-const double G_TLE = 3 * 1000;
+const double G_TLE = 9.8 * 1000;
 #else
 const double G_TLE = 9.8 * 1000;
 #endif
@@ -759,19 +777,24 @@ public:
     {
     }
 
-    Solution match_images(vector<Rect> target_rects)
+    Solution match_images(const vector<Rect>& target_rects, Solution ori_solution)
     {
-        // TODO: fastでいいやつ100個、後はinf + fast costで繋ぐ
         PrimalDual<int, ll> pd(source.size() + target_rects.size() + 2);
         const int target_begin = source.size();
         rep(j, target_rects.size())
         {
+            if (g_timer.get_elapsed() > G_TLE)
+            {
+                cerr << "match_images fail safe" << endl;
+                return ori_solution;
+            }
+
             Image tage = target.trim(target_rects[j]);
             rep(i, source.size())
             {
                 if (source[i].width() < tage.width() || source[i].height() < tage.height())
                 {
-                    pd.add_edge(i, target_begin + j, 0, ten(15));
+                    pd.add_edge(i, target_begin + j, 0, ten(16));
                 }
                 else
                 {
@@ -792,7 +815,7 @@ public:
 #endif
             pd.min_cost_flow(src, sink, target_rects.size());
         assert(min_cost >= 0);
-        assert(min_cost < ten(12));
+        assert(min_cost < ten(16));
 
         Solution solution = empty_solution();
         rep(i, source.size()) rep(j, target_rects.size())
@@ -804,7 +827,7 @@ public:
         return solution;
     }
 
-    Solution match_images_fast(vector<Rect> target_rects)
+    Solution match_images_fast(const vector<Rect>& target_rects)
     {
         PrimalDual<int, ll> pd(source.size() + target_rects.size() + 2);
         const int target_begin = source.size();
@@ -967,7 +990,7 @@ public:
         {
             if (l_timer.get_elapsed() > tle)
                 break;
-//             if (loop > 10000)
+//             if (loop > 2000)
 //                 break;
 
             const vector<int> ui = solution.used_indices();
@@ -1003,7 +1026,6 @@ public:
                 ll score = cur_score + diff_sum_sq_diff(nsol, solution);
                 assert(score == sum_sq_diff(target, nsol.make_collage()));
                 if (score < best_score)
-//                 if (score < best_score * 0.999)
                 {
 //                     fprintf(stderr, "%4d: %3d, %.5f\n", loop, (int)nsol.used_indices().size(), sqrt(double(score) / (target.width() * target.height())));
                     best_score = score;
@@ -1055,7 +1077,7 @@ public:
 
         dump(match_time_cost / 1000);
 
-        solution = improve(solution, G_TLE * 0.6 - match_time_cost);
+        solution = improve(solution, G_TLE * 0.73 - match_time_cost);
         assert(solution.valid());
 
         dump(g_timer.get_elapsed());
@@ -1063,8 +1085,7 @@ public:
         vector<Rect> rects;
         for (int i : solution.used_indices())
             rects.push_back(solution.rect(i));
-        solution = match_images(rects);
-//         solution = match_images_fast(rects);
+        solution = match_images(rects, solution);
         dump(g_timer.get_elapsed());
 //         dump(score_collage(target, solution.make_collage()));
 
