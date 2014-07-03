@@ -19,6 +19,10 @@ public class CollageMakerVis {
     public static String targetFolder = "300px";
     public static String sourceFolder = "100px";
 
+    public static String outputDir = null;
+    public static String outputFile = null;
+    public static boolean outputImage = false;
+
     class Image {
         int H, W;
         int[][] pixels;
@@ -235,6 +239,13 @@ public class CollageMakerVis {
             }
         }
 
+            public void pain(Graphics g) {
+                g.drawImage(target, 66, 40, null);
+                g.drawImage(collage, 133 + target.getWidth(), 40, null);
+                g.drawImage(bndCollage, 66, 80 + target.getHeight(), null);
+                g.drawImage(diff, 133 + target.getWidth(), 80 + target.getHeight(), null);
+            }
+
         DrawerPanel panel;
         int width, height;
 
@@ -244,8 +255,13 @@ public class CollageMakerVis {
         final int EXTRA_HEIGHT = 150;
         final int EXTRA_WIDTH = 200;
 
+        int tw, th;
+
         public Drawer(Image target, Image collage, int[] ans) {
             super();
+
+            tw = target.W;
+            th = target.H;
 
             this.target = new BufferedImage(target.W, target.H, BufferedImage.TYPE_INT_RGB);
             this.collage = new BufferedImage(target.W, target.H, BufferedImage.TYPE_INT_RGB);
@@ -288,13 +304,20 @@ public class CollageMakerVis {
                 }
             }
 
+        }
+
+        public int getWidth() { return EXTRA_WIDTH + 2 * tw; }
+        public int getHeight() { return EXTRA_HEIGHT + 2 * th; }
+
+        public void sho()
+        {
             panel = new DrawerPanel();
             getContentPane().add(panel);
 
             addWindowListener(new DrawerWindowListener());
 
-            width = EXTRA_WIDTH + 2 * target.W;
-            height = EXTRA_HEIGHT + 2 * target.H;
+            width = getWidth();
+            height = getHeight();
 
             setSize(width, height);
             setTitle("TCO'14 Marathon Round 3");
@@ -400,8 +423,19 @@ public class CollageMakerVis {
             }
         }
 
+        Drawer drawer = vis || outputImage ? new Drawer(tc.target, collage, ans) : null;
         if (vis) {
-            new Drawer(tc.target, collage, ans);
+            drawer.sho();
+        }
+
+        if (outputImage)
+        {
+            BufferedImage output = new BufferedImage(drawer.getWidth(), drawer.getHeight(), BufferedImage.TYPE_INT_RGB);
+            Graphics g = output.createGraphics();
+            drawer.pain(g);
+
+            new File(outputDir).mkdir();
+            ImageIO.write(output, "png", new File(outputDir + "/" + outputFile));
         }
 
         return Math.sqrt(score / (tc.target.H * tc.target.W));
@@ -421,6 +455,10 @@ public class CollageMakerVis {
                 targetFolder = args[++i];
             } else if (args[i].equals("-source")) {
                 sourceFolder = args[++i];
+            } else if (args[i].equals("-image")) {
+                outputDir = args[++i];
+                outputFile = args[++i];
+                outputImage = true;
             } else {
                 System.out.println("WARNING: unknown argument " + args[i] + ".");
             }

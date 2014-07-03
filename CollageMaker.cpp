@@ -751,6 +751,28 @@ public:
         return res;
     }
 
+    vector<int> make_result() const
+    {
+        vector<int> res;
+        rep(i, SOURCE_IMAGES)
+        {
+            if (rects[i].pos().x >= 0)
+            {
+                auto& r = rects[i];
+                res.push_back(r.pos().y);
+                res.push_back(r.pos().x);
+                res.push_back(r.pos().y + r.height() - 1);
+                res.push_back(r.pos().x + r.width() - 1);
+            }
+            else
+            {
+                rep(i, 4)
+                    res.push_back(-1);
+            }
+        }
+        return res;
+    }
+
 private:
     Image* target;
     vector<Image>* source;
@@ -758,6 +780,49 @@ private:
     vector<Rect> rects;
 };
 
+
+
+#define SOLUTION_LOG
+#ifdef SOLUTION_LOG
+
+string output_name;
+#define SET_OUTPUT_NAME(name) output_name = name
+
+vector<Solution> solution_logs;
+#define ADD_SOLUTION_LOG(solution) solution_logs.push_back(solution)
+
+#include <sys/stat.h>
+void output_solution_logs()
+{
+    if (output_name.empty())
+        return;
+
+    int interval = max<int>(1, solution_logs.size() / 100);
+    vector<int> use_i;
+    for (int i = 0; i < (int)solution_logs.size(); i += interval)
+        use_i.push_back(i);
+    for (int i = max(0, (int)solution_logs.size() - 5); i < solution_logs.size(); ++i)
+        use_i.push_back(i);
+    uniq(use_i);
+
+    mkdir("solution_logs", 0755);
+    mkdir(("solution_logs/" + output_name).c_str(), 0755);
+    for (int i : use_i)
+    {
+        char filename[256];
+        sprintf(filename, "solution_logs/%s/%06d", output_name.c_str(), i);
+        ofstream fs(filename);
+        for (int a : solution_logs[i].make_result())
+            fs << a << endl;
+    }
+}
+#define OUTPUT_SOLUTION_LOGS() output_solution_logs()
+
+#else
+#define SET_OUTPUT_NAME(name)
+#define ADD_SOLUTION_LOG(solution)
+#define OUTPUT_SOLUTION_LOGS() output_solution_logs()
+#endif
 
 #ifdef LOCAL
 const double G_TLE = 9.8 * 1000;
@@ -1031,6 +1096,8 @@ public:
                     best_score = score;
                     cur_score = score;
                     solution = nsol;
+
+                    ADD_SOLUTION_LOG(solution);
                 }
             }
         }
@@ -1075,10 +1142,14 @@ public:
         match_time_cost = g_timer.get_elapsed() - match_time_cost;
         assert(solution.valid());
 
+        ADD_SOLUTION_LOG(solution);
+
         dump(match_time_cost / 1000);
 
         solution = improve(solution, G_TLE * 0.73 - match_time_cost);
         assert(solution.valid());
+
+        ADD_SOLUTION_LOG(solution);
 
         dump(g_timer.get_elapsed());
 //         dump(score_collage(target, solution.make_collage()));
@@ -1088,6 +1159,10 @@ public:
         solution = match_images(rects, solution);
         dump(g_timer.get_elapsed());
 //         dump(score_collage(target, solution.make_collage()));
+
+        ADD_SOLUTION_LOG(solution);
+
+        OUTPUT_SOLUTION_LOGS();
 
         return solution;
     }
@@ -1113,37 +1188,12 @@ public:
             source.push_back(input_image(data, stream_i));
 
         Solution solution = Solver(target, source).solve();
-        vector<Rect> result_rects(SOURCE_IMAGES, Rect(Pos(-114514, 1919810), -1, -1));
-        for (int i : solution.used_indices())
-            result_rects[i] = solution.rect(i);
-
         dump(g_timer.get_elapsed() / 1000);
 
-        return make_result(result_rects);
+        return solution.make_result();
     }
 
 private:
-    vector<int> make_result(vector<Rect>& result_rects)
-    {
-        vector<int> res;
-        rep(i, SOURCE_IMAGES)
-        {
-            if (result_rects[i].pos().x >= 0)
-            {
-                Rect& r = result_rects[i];
-                res.push_back(r.pos().y);
-                res.push_back(r.pos().x);
-                res.push_back(r.pos().y + r.height() - 1);
-                res.push_back(r.pos().x + r.width() - 1);
-            }
-            else
-            {
-                rep(i, 4)
-                    res.push_back(-1);
-            }
-        }
-        return res;
-    }
 
     Image input_image(const vector<int>& data, int& stream_i)
     {
@@ -1159,6 +1209,9 @@ private:
 #ifdef LOCAL
 int main(int argc, char** argv)
 {
+    if (argc > 1)
+        SET_OUTPUT_NAME(argv[1]);
+
     int n;
     cin >> n;
     vector<int> data(n);
