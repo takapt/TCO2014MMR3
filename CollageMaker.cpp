@@ -460,8 +460,8 @@ public:
 
     Image scale(int new_w, int new_h) const
     {
-//         assert(0 < new_w && new_w <= width());
-//         assert(0 < new_h && new_h <= height());
+        assert(new_w > 0);
+        assert(new_h > 0);
 
         static vector<int> ori_ys, new_ys, inter_ys;
         ori_ys.clear();
@@ -645,6 +645,8 @@ vector<Rect> list_spaces(Array2D<bool>& used, int max_width = 50, int max_height
                 ++hx;
             }
 
+            assert(lx < hx);
+            assert(ly < hy);
             spaces.push_back(Rect(Pos(lx, ly), hx - lx, hy - ly));
             assert(spaces.back().width() <= max_width);
             assert(spaces.back().height() <= max_height);
@@ -782,7 +784,7 @@ private:
 
 
 
-#define SOLUTION_LOG
+// #define SOLUTION_LOG
 #ifdef SOLUTION_LOG
 
 string output_name;
@@ -805,6 +807,8 @@ void output_solution_logs()
         use_i.push_back(i);
     uniq(use_i);
 
+    cerr << "output solution logs" << endl;
+
     mkdir("solution_logs", 0755);
     mkdir(("solution_logs/" + output_name).c_str(), 0755);
     for (int i : use_i)
@@ -821,7 +825,7 @@ void output_solution_logs()
 #else
 #define SET_OUTPUT_NAME(name)
 #define ADD_SOLUTION_LOG(solution)
-#define OUTPUT_SOLUTION_LOGS() output_solution_logs()
+#define OUTPUT_SOLUTION_LOGS()
 #endif
 
 #ifdef LOCAL
@@ -899,6 +903,8 @@ public:
         rep(j, target_rects.size())
         {
             Image tage = target.trim(target_rects[j]).scale(FIXED_SIZE, FIXED_SIZE);
+            const ll area = target_rects[j].width() * target_rects[j].height();
+            assert(area > 0);
             rep(i, source.size())
             {
                 if (source[i].width() < target_rects[j].width() || source[i].height() < target_rects[j].height())
@@ -908,8 +914,9 @@ public:
                 else
                 {
 //                     Image scaled = source[i].scale(tage.width(), tage.height());
-                    ll d = sum_sq_diff(tage, fixed_size_source[i]);
-                    pd.add_edge(i, target_begin + j, 1, d);
+                    const static ll FIXED_AREA = FIXED_SIZE * FIXED_SIZE;
+                    ll cost = sum_sq_diff(tage, fixed_size_source[i]) * area / FIXED_AREA;
+                    pd.add_edge(i, target_begin + j, 1, cost);
                 }
             }
         }
@@ -1009,37 +1016,53 @@ public:
     Solution fill_space(Solution solution)
     {
         vector<bool> used = solution.used_source_table();
+        vector<int> use_i;
+        rep(i, source.size())
+            if (!used[i])
+                use_i.push_back(i);
         vector<Rect> spaces = solution.list_spaces(60, 60);
-        for (auto& space : spaces)
+        PrimalDual<int, ll> pd(use_i.size() + spaces.size() + 2);
+        if (use_i.size() < spaces.size())
+            return empty_solution();
+
+        const int target_begin = use_i.size();
+        rep(j, spaces.size())
         {
-            Image trimed_space = target.trim(space).scale(FIXED_SIZE, FIXED_SIZE);
-
-            int best_i = -1;
-            ll best_score = ten(18);
-            rep(i, source.size())
+            const ll area = spaces[j].width() * spaces[j].height();
+            assert(area > 0);
+            Image tage = target.trim(spaces[j]).scale(FIXED_SIZE, FIXED_SIZE);
+            rep(i, use_i.size())
             {
-                if (!used[i] && source[i].width() >= space.width() && source[i].height() >= space.height())
+                Image& src = source[use_i[i]];
+                if (src.width() < spaces[j].width() || src.height() < spaces[j].height())
                 {
-                    // naive
-//                     Image scaled = source[i].scale(space.width(), space.height());
-//                     ll score = sum_sq_diff(target, space, scaled);
-
-                    // fast
-                    ll score = sum_sq_diff(trimed_space, fixed_size_source[i]);
-
-                    if (score < best_score)
-                    {
-                        best_score = score;
-                        best_i = i;
-                    }
+                    pd.add_edge(i, target_begin + j, 0, ten(15));
+                }
+                else
+                {
+                    const static ll FIXED_AREA = FIXED_SIZE * FIXED_SIZE;
+                    ll cost = sum_sq_diff(tage, fixed_size_source[use_i[i]]) * area / FIXED_AREA;
+                    pd.add_edge(i, target_begin + j, 1, cost);
                 }
             }
-            if (best_i == -1)
-                return empty_solution();
-
-            used[best_i] = true;
-            solution.rect(best_i) = space;
         }
+
+        const int src = use_i.size() + spaces.size();
+        const int sink = src + 1;
+        rep(i, use_i.size())
+            pd.add_edge(src, i, 1, 0);
+        rep(j, spaces.size())
+            pd.add_edge(target_begin + j, sink, 1, 0);
+        ll min_cost = pd.min_cost_flow(src, sink, spaces.size());
+        if (min_cost >= ten(15))
+            return empty_solution();
+
+        rep(i, use_i.size()) rep(j, spaces.size())
+        {
+            if (pd.g[pd.g[i][j].to][pd.g[i][j].rev].cap == 1)
+                solution.rect(use_i[i]) = spaces[j];
+        }
+        assert(solution.valid());
         return solution;
     }
 
@@ -1053,15 +1076,15 @@ public:
         ll best_score = cur_score;
         for (int loop = 0; ; ++loop)
         {
-            if (l_timer.get_elapsed() > tle)
-                break;
-//             if (loop > 2000)
+//             if (l_timer.get_elapsed() > tle)
 //                 break;
+            if (loop > 5000)
+                break;
 
             const vector<int> ui = solution.used_indices();
             Solution nsol;
             int ra = rand() % 10000;
-            if (ra < 5)
+            if (ra < 30)
             {
 //                 double prev = score_collage(target, solution.make_collage());
 //                 nsol = match_images(solution.used_rects());
@@ -1089,10 +1112,10 @@ public:
             {
                 assert(nsol.valid());
                 ll score = cur_score + diff_sum_sq_diff(nsol, solution);
-                assert(score == sum_sq_diff(target, nsol.make_collage()));
+//                 assert(score == sum_sq_diff(target, nsol.make_collage()));
                 if (score < best_score)
                 {
-//                     fprintf(stderr, "%4d: %3d, %.5f\n", loop, (int)nsol.used_indices().size(), sqrt(double(score) / (target.width() * target.height())));
+                    fprintf(stderr, "%6d: %3d, %.5f\n", loop, (int)nsol.used_indices().size(), sqrt(double(score) / (target.width() * target.height())));
                     best_score = score;
                     cur_score = score;
                     solution = nsol;
@@ -1122,11 +1145,6 @@ public:
                 diff_ssd += a_ssd - b_ssd;
             }
         }
-#ifndef NDEBUG
-        ll a_ssd = sum_sq_diff(target, cur.make_collage());
-        ll b_ssd = sum_sq_diff(target, prev.make_collage());
-        assert(diff_ssd == a_ssd - b_ssd);
-#endif
         return diff_ssd;
     }
 
@@ -1152,13 +1170,12 @@ public:
         ADD_SOLUTION_LOG(solution);
 
         dump(g_timer.get_elapsed());
-//         dump(score_collage(target, solution.make_collage()));
         vector<Rect> rects;
         for (int i : solution.used_indices())
             rects.push_back(solution.rect(i));
         solution = match_images(rects, solution);
         dump(g_timer.get_elapsed());
-//         dump(score_collage(target, solution.make_collage()));
+
 
         ADD_SOLUTION_LOG(solution);
 

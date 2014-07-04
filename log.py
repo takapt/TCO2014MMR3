@@ -22,25 +22,34 @@ def get_score(seed):
     c = make_command(seed)
 
     start = time.time()
-    output = os.popen(c).read()
+    try:
+        output = os.popen(c).read()
+    except:
+        raise "exit"
+
     score = float(output.split()[-1])
     exe_time = time.time() - start
 
     return {'seed': seed, 'score': score, 'time': exe_time}
 
-
-try:
-    for seed in range(1, 1000):
+def single(seeds):
+    for seed in seeds:
         result = get_score(seed)
         print('{:4d} {:3.3f} {:.3f}'.format(seed, result['score'], result['time']))
         sys.stdout.flush()
 
-#     from multiprocessing import Pool
-#     pool = Pool()
-#     results = pool.map(get_score, range(1, 30))
-#     for result in results:
-#         seed = result['seed']
-#         print('{:4d} {:3.3f} {:.3f}'.format(seed, result['score'], result['time']))
-#         sys.stdout.flush()
+def multi(seeds):
+    from multiprocessing import Pool
+    pool = Pool()
+    results = pool.map(get_score, seeds)
+    for result in results:
+        seed = result['seed']
+        print('{:4d} {:3.3f} {:.3f}'.format(seed, result['score'], result['time']))
+        sys.stdout.flush()
+
+try:
+    multi(range(1, 20))
+except:
+    pass
 finally:
     os.remove(copied_exe_path)
