@@ -1161,14 +1161,14 @@ public:
         ll best_score = cur_score;
         for (int loop = 0; ; ++loop)
         {
-//             if (l_timer.get_elapsed() > tle)
-//                 break;
-            if (loop > 20000)
+            if (l_timer.get_elapsed() > tle)
                 break;
+//             if (loop > 20000)
+//                 break;
 
             Solution nsol;
             int ra = rand() % 10000;
-            if (ra < 20)
+            if (ra < 15)
             {
 //                 double prev = score_collage(target, solution.make_collage());
 //                 nsol = match_images(solution.used_rects());
@@ -1193,7 +1193,7 @@ public:
 //                 assert(score == sum_sq_diff(target, nsol.make_collage()));
                 if (score < best_score)
                 {
-                    fprintf(stderr, "%6d: %3d, %.5f\n", loop, (int)nsol.used_indices().size(), sqrt(double(score) / (target.width() * target.height())));
+//                     fprintf(stderr, "%6d: %3d, %.5f\n", loop, (int)nsol.used_indices().size(), sqrt(double(score) / (target.width() * target.height())));
                     best_score = score;
                     cur_score = score;
                     solution = nsol;
@@ -1281,14 +1281,6 @@ public:
 
         Solution solution = Solver(target, source).solve();
         dump(g_timer.get_elapsed() / 1000);
-
-        Image collage = solution.make_collage();
-        map<int, int> freq;
-        rep(y, target.height()) rep(x, target.width())
-        {
-            int diff = abs(collage.at(x, y) - target.at(x, y));
-            ++freq[diff];
-        }
 
         return solution.make_result();
     }
