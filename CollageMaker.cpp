@@ -94,6 +94,56 @@ public:
     time_type get_elapsed() { return elapsed = get_ms() - start_time; }
 };
 
+class Random
+{
+private:
+    unsigned int  x, y, z, w;
+public:
+    Random(unsigned int x
+             , unsigned int y
+             , unsigned int z
+             , unsigned int w)
+        : x(x), y(y), z(z), w(w) { }
+    Random() 
+        : x(123456789), y(362436069), z(521288629), w(88675123) { }
+    Random(unsigned int seed)
+        : x(123456789), y(362436069), z(521288629), w(seed) { }
+
+    unsigned int next()
+    {
+        unsigned int t = x ^ (x << 11);
+        x = y;
+        y = z;
+        z = w;
+        return w = (w ^ (w >> 19)) ^ (t ^ (t >> 8));
+    }
+
+    int next_int() { return next(); }
+
+    // [0, upper)
+    int next_int(int upper) { return next() % upper; }
+
+    // [low, high]
+    int next_int(int low, int high) { return next_int(high - low + 1) + low; }
+
+    double next_double(double upper) { return upper * next() / UINT_MAX; }
+    double next_double(double low, double high) { return next_double(high - low) + low; }
+
+    template <typename T>
+    int select(const vector<T>& ratio)
+    {
+        T sum = accumulate(ratio.begin(), ratio.end(), (T)0);
+        T v = next_double(sum) + (T)1e-6;
+        for (int i = 0; i < (int)ratio.size(); ++i)
+        {
+            v -= ratio[i];
+            if (v <= 0)
+                return i;
+        }
+        return 0;
+    }
+};
+
 template <typename FLOW, typename COST>
 class PrimalDual
 {
@@ -286,6 +336,10 @@ public:
         : pos_(pos), w_(w), h_(h)
     {
     }
+    Rect(int x, int y, int w, int h)
+        : pos_(Pos(x, y)), w_(w), h_(h)
+    {
+    }
     Rect()
         : pos_(Pos(1919810, 114514)), w_(364364)
     {
@@ -346,6 +400,14 @@ public:
             && top() <= other.bottom() - 1 && bottom() - 1 >= other.top();
     }
 
+    bool is_neighbor(const Rect& other) const
+    {
+        return (left() <= other.right() - 1 && right() - 1 >= other.left() &&
+                top() == other.bottom() || bottom() == other.top())
+            || (top() <= other.bottom() - 1 && bottom() - 1 >= other.top() &&
+                left() == other.right() || right() == other.left());
+    }
+
     bool valid(int w, int h) const
     {
         return width() > 0 && height() > 0
@@ -369,6 +431,7 @@ public:
     Pos pos_;
     int w_, h_;
 };
+const Rect invalid_rect(-114, -514, -1919, -810);
 
 namespace std
 {
@@ -621,7 +684,7 @@ Image make_collage(int w, int h, vector<Image>& source, vector<Rect>& target_rec
     return collage;
 }
 
-vector<Rect> list_spaces(Array2D<bool>& used, int max_width = 50, int max_height = 50)
+vector<Rect> list_spaces(Array2D<bool>& used, int max_width, int max_height)
 {
     static vector<Rect> spaces;
     spaces.clear();
@@ -672,7 +735,7 @@ class Solution
 {
 public:
     Solution(Image& target, vector<Image>& source)
-        : target(&target), source(&source), rects(vector<Rect>(SOURCE_IMAGES, Rect(Pos(-1919, 810), -1, -1)))
+        : target(&target), source(&source), rects(vector<Rect>(SOURCE_IMAGES, invalid_rect))
     {
     }
     Solution()
@@ -734,14 +797,32 @@ public:
 
     bool valid() const
     {
-        vector<int> ui = used_indices();
-        rep(ii, ui.size()) rep(jj, ii)
+        int coverd[512][512];
+        clr(coverd, 0);
+        rep(i, SOURCE_IMAGES)
         {
-            int i = ui[ii], j = ui[jj];
-            if (rects[i].intersect(rects[j]))
-                return false;
+            auto& r = rect(i);
+            if (r.valid())
+            {
+                if (!r.valid(target->width(), target->height()))
+                {
+                    dump(r);
+                    return false;
+                }
+
+                rep(y, r.height()) rep(x, r.width())
+                    ++coverd[r.pos().y + y][r.pos().x + x];
+            }
         }
 
+        rep(y, target->height()) rep(x, target->width())
+        {
+            if (coverd[y][x] != 1)
+            {
+                fprintf(stderr, "%d, %d: %d\n", x, y, coverd[y][x]);
+                return false;
+            }
+        }
         return true;
     }
 
@@ -800,6 +881,7 @@ void output_solution_logs()
         return;
 
     int interval = max<int>(1, solution_logs.size() / 100);
+    interval = 1;
     vector<int> use_i;
     for (int i = 0; i < (int)solution_logs.size(); i += interval)
         use_i.push_back(i);
@@ -829,7 +911,7 @@ void output_solution_logs()
 #endif
 
 #ifdef LOCAL
-const double G_TLE = 9.8 * 1000;
+const double G_TLE = 10 * 1000;
 #else
 const double G_TLE = 9.8 * 1000;
 #endif
@@ -848,8 +930,8 @@ public:
 
     Solution match_images(const vector<Rect>& target_rects, Solution ori_solution)
     {
-        PrimalDual<int, ll> pd(source.size() + target_rects.size() + 2);
-        const int target_begin = source.size();
+        PrimalDual<int, ll> pd(SOURCE_IMAGES + target_rects.size() + 2);
+        const int target_begin = SOURCE_IMAGES;
         rep(j, target_rects.size())
         {
             if (g_timer.get_elapsed() > G_TLE)
@@ -859,7 +941,7 @@ public:
             }
 
             Image tage = target.trim(target_rects[j]);
-            rep(i, source.size())
+            rep(i, SOURCE_IMAGES)
             {
                 if (source[i].width() < tage.width() || source[i].height() < tage.height())
                 {
@@ -873,21 +955,21 @@ public:
                 }
             }
         }
-        const int src = source.size() + target_rects.size();
+        const int src = SOURCE_IMAGES + target_rects.size();
         const int sink = src + 1;
-        rep(i, source.size())
+        rep(i, SOURCE_IMAGES)
             pd.add_edge(src, i, 1, 0);
         rep(j, target_rects.size())
             pd.add_edge(target_begin + j, sink, 1, 0);
-#ifndef NDEBUG 
-        ll min_cost = 
-#endif
-            pd.min_cost_flow(src, sink, target_rects.size());
+
+        ll min_cost = pd.min_cost_flow(src, sink, target_rects.size());
+        if (min_cost < 0 || min_cost >= ten(15))
+            return empty_solution();
         assert(min_cost >= 0);
         assert(min_cost < ten(16));
 
         Solution solution = empty_solution();
-        rep(i, source.size()) rep(j, target_rects.size())
+        rep(i, SOURCE_IMAGES) rep(j, target_rects.size())
         {
             if (pd.g[pd.g[i][j].to][pd.g[i][j].rev].cap == 1)
                 solution.rect(i) = target_rects[j];
@@ -898,14 +980,14 @@ public:
 
     Solution match_images_fast(const vector<Rect>& target_rects)
     {
-        PrimalDual<int, ll> pd(source.size() + target_rects.size() + 2);
-        const int target_begin = source.size();
+        PrimalDual<int, ll> pd(SOURCE_IMAGES + target_rects.size() + 2);
+        const int target_begin = SOURCE_IMAGES;
         rep(j, target_rects.size())
         {
             Image tage = target.trim(target_rects[j]).scale(FIXED_SIZE, FIXED_SIZE);
             const ll area = target_rects[j].width() * target_rects[j].height();
             assert(area > 0);
-            rep(i, source.size())
+            rep(i, SOURCE_IMAGES)
             {
                 if (source[i].width() < target_rects[j].width() || source[i].height() < target_rects[j].height())
                 {
@@ -913,28 +995,26 @@ public:
                 }
                 else
                 {
-//                     Image scaled = source[i].scale(tage.width(), tage.height());
                     const static ll FIXED_AREA = FIXED_SIZE * FIXED_SIZE;
                     ll cost = sum_sq_diff(tage, fixed_size_source[i]) * area / FIXED_AREA;
                     pd.add_edge(i, target_begin + j, 1, cost);
                 }
             }
         }
-        const int src = source.size() + target_rects.size();
+        const int src = SOURCE_IMAGES + target_rects.size();
         const int sink = src + 1;
-        rep(i, source.size())
+        rep(i, SOURCE_IMAGES)
             pd.add_edge(src, i, 1, 0);
         rep(j, target_rects.size())
             pd.add_edge(target_begin + j, sink, 1, 0);
-#ifndef NDEBUG 
-        ll min_cost = 
-#endif
-            pd.min_cost_flow(src, sink, target_rects.size());
+        ll min_cost = pd.min_cost_flow(src, sink, target_rects.size());
+        if (min_cost < 0 || min_cost >= ten(15))
+            return empty_solution();
         assert(min_cost >= 0);
-        assert(min_cost < ten(12));
+        assert(min_cost < ten(16));
 
         Solution solution = empty_solution();
-        rep(i, source.size()) rep(j, target_rects.size())
+        rep(i, SOURCE_IMAGES) rep(j, target_rects.size())
         {
             if (pd.g[pd.g[i][j].to][pd.g[i][j].rev].cap == 1)
                 solution.rect(i) = target_rects[j];
@@ -960,8 +1040,10 @@ public:
         return target_rects;
     }
 
-    Solution expand(Solution solution, int expand_i)
+    Solution expand(Solution solution)
     {
+        vector<int> used_i = solution.used_indices();
+        int expand_i = used_i[rand() % used_i.size()];
         Rect& r = solution.rect(expand_i);
         Image& image = source[expand_i];
 
@@ -991,8 +1073,10 @@ public:
         return res;
     }
 
-    Solution shrink(Solution solution, int shrink_i)
+    Solution shrink(Solution solution)
     {
+        vector<int> used_i = solution.used_indices();
+        const int shrink_i = used_i[rand() % used_i.size()];
         Rect& r = solution.rect(shrink_i);
 
         Dir dir = Dir(rand() % 4);
@@ -1017,7 +1101,7 @@ public:
     {
         vector<bool> used = solution.used_source_table();
         vector<int> use_i;
-        rep(i, source.size())
+        rep(i, SOURCE_IMAGES)
             if (!used[i])
                 use_i.push_back(i);
         vector<Rect> spaces = solution.list_spaces(60, 60);
@@ -1054,7 +1138,7 @@ public:
         rep(j, spaces.size())
             pd.add_edge(target_begin + j, sink, 1, 0);
         ll min_cost = pd.min_cost_flow(src, sink, spaces.size());
-        if (min_cost >= ten(15))
+        if (min_cost < 0 || min_cost >= ten(15))
             return empty_solution();
 
         rep(i, use_i.size()) rep(j, spaces.size())
@@ -1065,6 +1149,7 @@ public:
         assert(solution.valid());
         return solution;
     }
+
 
     Solution improve(Solution solution, double tle)
     {
@@ -1078,13 +1163,12 @@ public:
         {
 //             if (l_timer.get_elapsed() > tle)
 //                 break;
-            if (loop > 5000)
+            if (loop > 20000)
                 break;
 
-            const vector<int> ui = solution.used_indices();
             Solution nsol;
             int ra = rand() % 10000;
-            if (ra < 30)
+            if (ra < 20)
             {
 //                 double prev = score_collage(target, solution.make_collage());
 //                 nsol = match_images(solution.used_rects());
@@ -1094,15 +1178,9 @@ public:
             }
             else
             if (ra < 9000)
-            {
-                int expand_i = rand() % ui.size();
-                nsol = expand(solution, ui[expand_i]);
-            }
+                nsol = expand(solution);
             else
-            {
-                int shrink_i = rand() % ui.size();
-                nsol = shrink(solution, ui[shrink_i]);
-            }
+                nsol = shrink(solution);
 
             if (nsol.used_indices().empty())
                 continue;
@@ -1134,7 +1212,7 @@ public:
         assert(prev.valid());
 
         ll diff_ssd = 0;
-        rep(i, source.size())
+        rep(i, SOURCE_IMAGES)
         {
             Rect& ar = cur.rect(i);
             Rect& br = prev.rect(i);
@@ -1170,10 +1248,7 @@ public:
         ADD_SOLUTION_LOG(solution);
 
         dump(g_timer.get_elapsed());
-        vector<Rect> rects;
-        for (int i : solution.used_indices())
-            rects.push_back(solution.rect(i));
-        solution = match_images(rects, solution);
+        solution = match_images(solution.used_rects(), solution);
         dump(g_timer.get_elapsed());
 
 
@@ -1206,6 +1281,14 @@ public:
 
         Solution solution = Solver(target, source).solve();
         dump(g_timer.get_elapsed() / 1000);
+
+        Image collage = solution.make_collage();
+        map<int, int> freq;
+        rep(y, target.height()) rep(x, target.width())
+        {
+            int diff = abs(collage.at(x, y) - target.at(x, y));
+            ++freq[diff];
+        }
 
         return solution.make_result();
     }

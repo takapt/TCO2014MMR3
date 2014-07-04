@@ -10,13 +10,19 @@ HOME = os.environ['HOME']
 MM = os.path.join(HOME, 'mm')
 exe = 'a.out' if len(sys.argv) < 2 else sys.argv[1]
 
-jar_path = os.path.join(MM,'CollageMakerVis.jar')
+result_name = None
+if len(sys.argv) >= 3:
+    result_name = sys.argv[2]
+
 exe_path = os.path.join(MM, exe)
 copied_exe_path = os.path.join(MM, 'copied_' + str(random.randint(0, 10**5)))
 shutil.copy(exe_path, copied_exe_path)
 
 def make_command(seed):
-    return "java -jar {} -exec '{}' -novis -seed {}".format(jar_path, copied_exe_path, seed)
+    command = "java CollageMakerVis -exec '{}' -novis -seed {}".format(copied_exe_path, seed)
+    if result_name:
+        command += ' -image results/{} {:06d}.png'.format(result_name, seed)
+    return command
 
 def get_score(seed):
     c = make_command(seed)
@@ -48,8 +54,7 @@ def multi(seeds):
         sys.stdout.flush()
 
 try:
+#     single(range(1, 3))
     multi(range(1, 20))
-except:
-    pass
 finally:
     os.remove(copied_exe_path)
