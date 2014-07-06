@@ -403,9 +403,9 @@ public:
     bool is_neighbor(const Rect& other) const
     {
         return (left() <= other.right() - 1 && right() - 1 >= other.left() &&
-                top() == other.bottom() || bottom() == other.top())
+                (top() == other.bottom() || bottom() == other.top()))
             || (top() <= other.bottom() - 1 && bottom() - 1 >= other.top() &&
-                left() == other.right() || right() == other.left());
+                (left() == other.right() || right() == other.left()));
     }
 
     bool valid(int w, int h) const
@@ -668,14 +668,14 @@ double score_collage(const Image& target, const Image& collage)
     return sqrt(double(sum_sq_diff(target, collage)) / (target.height() * target.width()));
 }
 
-Image make_collage(int w, int h, vector<Image>& source, vector<Rect>& target_rects)
+Image make_collage(int w, int h, const vector<Image>& source, const vector<Rect>& target_rects)
 {
     Image collage(w, h);
     rep(i, SOURCE_IMAGES)
     {
         if (target_rects[i].pos().x >= 0)
         {
-            Rect& r = target_rects[i];
+            auto& r = target_rects[i];
             Image scaled = source[i].scale(r.width(), r.height());
             rep(y, scaled.height()) rep(x, scaled.width())
                 collage.at(r.pos() + Pos(x, y)) = scaled.at(x, y);
@@ -805,10 +805,7 @@ public:
             if (r.valid())
             {
                 if (!r.valid(target->width(), target->height()))
-                {
-                    dump(r);
                     return false;
-                }
 
                 rep(y, r.height()) rep(x, r.width())
                     ++coverd[r.pos().y + y][r.pos().x + x];
@@ -816,13 +813,8 @@ public:
         }
 
         rep(y, target->height()) rep(x, target->width())
-        {
             if (coverd[y][x] != 1)
-            {
-                fprintf(stderr, "%d, %d: %d\n", x, y, coverd[y][x]);
                 return false;
-            }
-        }
         return true;
     }
 
@@ -934,11 +926,13 @@ public:
         const int target_begin = SOURCE_IMAGES;
         rep(j, target_rects.size())
         {
+#ifndef NO_TIMER
             if (g_timer.get_elapsed() > G_TLE)
             {
                 cerr << "match_images fail safe" << endl;
                 return ori_solution;
             }
+#endif
 
             Image tage = target.trim(target_rects[j]);
             rep(i, SOURCE_IMAGES)
@@ -1161,10 +1155,13 @@ public:
         ll best_score = cur_score;
         for (int loop = 0; ; ++loop)
         {
+#ifdef NO_TIMER
+            if (loop > 20000)
+                break;
+#else
             if (l_timer.get_elapsed() > tle)
                 break;
-//             if (loop > 20000)
-//                 break;
+#endif
 
             Solution nsol;
             int ra = rand() % 10000;
