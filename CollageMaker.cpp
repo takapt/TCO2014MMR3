@@ -1174,10 +1174,10 @@ public:
 //                 fprintf(stderr, "%.4f -> %.4f\n", prev, cur);
             }
             else
-            if (ra < 9000)
+//             if (ra < 9000)
                 nsol = expand(solution);
-            else
-                nsol = shrink(solution);
+//             else
+//                 nsol = shrink(solution);
 
             if (nsol.used_indices().empty())
                 continue;
