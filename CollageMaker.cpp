@@ -144,24 +144,32 @@ public:
     }
 };
 
-template <typename FLOW, typename COST>
+typedef int FLOW;
+typedef ll COST;
+struct PrimalDualEdge
+{
+    int to;
+    FLOW cap;
+    COST cost;
+    int rev;
+    PrimalDualEdge(int to, FLOW cap, COST cost, int rev)
+        : to(to), cap(cap), cost(cost), rev(rev) { }
+};
 class PrimalDual
 {
-private:
-    struct PrimalDualEdge
-    {
-        int to;
-        FLOW cap;
-        COST cost;
-        int rev;
-        PrimalDualEdge(int to, FLOW cap, COST cost, int rev)
-            : to(to), cap(cap), cost(cost), rev(rev) { }
-    };
 public:
     int V;
-    vector<vector<PrimalDualEdge> > g;
+    static vector<vector<PrimalDualEdge> > g;
 
-    PrimalDual(int V) : V(V), g(V) { }
+//     PrimalDual(int V) : V(V), g(V) { }
+    PrimalDual(int V) : V(V)
+    {
+        assert(V <= 512);
+        if ((int)g.size() < V)
+            g.resize(V);
+        rep(i, V)
+            g[i].clear();
+    }
 
     void add_edge(int from, int to, FLOW cap, COST cost)
     {
@@ -176,7 +184,8 @@ public:
 
     COST min_cost_flow(int s, int t, FLOW f)
     {
-        vector<COST> h(V);
+        COST h[512];
+        fill_n(h, V, 0);
         COST res = 0;
         int _f = f;
         while (_f > 0)
@@ -184,8 +193,11 @@ public:
             typedef pair<COST, int> _p;
             const COST _INF = (COST)((1LL << 60) | (1 << 29));
             priority_queue<_p, vector<_p>, greater<_p> > q;
-            vector<COST> dis(V, _INF);
-            vector<int> prevv(V), preve(V);
+            COST dis[512];
+            fill_n(dis, V, _INF);
+            int prevv[512], preve[512];
+            fill_n(prevv, V, 0);
+            fill_n(preve, V, 0);
             dis[s] = 0;
             q.push(_p(0, s));
             while (!q.empty())
@@ -196,7 +208,7 @@ public:
                 if (cost > dis[v])
                     continue;
 
-                for (int i = 0; i < g[v].size(); ++i)
+                for (int i = 0; i < (int)g[v].size(); ++i)
                 {
                     PrimalDualEdge& e = g[v][i];
                     const COST _eps = 1e-10;
@@ -236,6 +248,7 @@ public:
         return res;
     }
 };
+vector<vector<PrimalDualEdge> > PrimalDual::g;
 
 enum Dir
 {
@@ -684,14 +697,24 @@ Image make_collage(int w, int h, const vector<Image>& source, const vector<Rect>
     return collage;
 }
 
+bool failed_list_spaces = false;
 vector<Rect> list_spaces(Array2D<bool>& used, int max_width, int max_height)
 {
+    static const int max_spaces = 5;
+
+    failed_list_spaces = false;
     static vector<Rect> spaces;
     spaces.clear();
     rep(ly, used.height()) rep(lx, used.width())
     {
         if (!used.at(lx, ly))
         {
+            if ((int)spaces.size() >= max_spaces)
+            {
+                failed_list_spaces = true;
+                return vector<Rect>();
+            }
+
             int hy = ly + 1;
             while (hy < used.height() && hy - ly < max_height && !used.at(lx, hy))
                 ++hy;
@@ -903,10 +926,12 @@ void output_solution_logs()
 #endif
 
 #ifdef LOCAL
-const double G_TLE = 10 * 1000;
+const double G_TLE = 3.5 * 1000;
 #else
 const double G_TLE = 9.8 * 1000;
 #endif
+
+const int LOOP = 8000;
 
 Timer g_timer;
 
@@ -922,7 +947,10 @@ public:
 
     Solution match_images(const vector<Rect>& target_rects, Solution ori_solution)
     {
-        PrimalDual<int, ll> pd(SOURCE_IMAGES + target_rects.size() + 2);
+        if (target_rects.size() > SOURCE_IMAGES)
+            return empty_solution();
+
+        PrimalDual pd(SOURCE_IMAGES + target_rects.size() + 2);
         const int target_begin = SOURCE_IMAGES;
         rep(j, target_rects.size())
         {
@@ -974,7 +1002,10 @@ public:
 
     Solution match_images_fast(const vector<Rect>& target_rects)
     {
-        PrimalDual<int, ll> pd(SOURCE_IMAGES + target_rects.size() + 2);
+        if (target_rects.size() > SOURCE_IMAGES)
+            return empty_solution();
+
+        PrimalDual pd(SOURCE_IMAGES + target_rects.size() + 2);
         const int target_begin = SOURCE_IMAGES;
         rep(j, target_rects.size())
         {
@@ -1047,8 +1078,13 @@ public:
         assert(rem_h >= 0);
 
         Dir dir = Dir(rand() % 4);
-        if (g_timer.get_elapsed() < 2000)
+#ifdef NO_TIMER
+        if (loop < LOOP * 0.2)
             dir = Dir(rand() % 2 ? UP : DOWN);
+#else
+        if (g_timer.get_elapsed() < G_TLE * 0.2)
+            dir = Dir(rand() % 2 ? UP : DOWN);
+#endif
 
         int div = (dir == LEFT || dir == RIGHT ? rem_w : rem_h);
         if (div == 0)
@@ -1094,15 +1130,14 @@ public:
 
     Solution empty_solution() { return Solution(target, source); }
 
-    Solution fill_space(Solution solution)
+    Solution fill_space(Solution solution, const vector<Rect>& spaces)
     {
         vector<bool> used = solution.used_source_table();
         vector<int> use_i;
         rep(i, SOURCE_IMAGES)
             if (!used[i])
                 use_i.push_back(i);
-        vector<Rect> spaces = solution.list_spaces(60, 60);
-        PrimalDual<int, ll> pd(use_i.size() + spaces.size() + 2);
+        PrimalDual pd(use_i.size() + spaces.size() + 2);
         if (use_i.size() < spaces.size())
             return empty_solution();
 
@@ -1147,7 +1182,7 @@ public:
         return solution;
     }
 
-
+    int loop;
     Solution improve(Solution solution, double tle)
     {
         Timer l_timer;
@@ -1157,10 +1192,10 @@ public:
         assert(solution.valid());
         ll cur_score = sum_sq_diff(target, solution.make_collage());
         ll best_score = cur_score;
-        for (int loop = 0; ; ++loop)
+        for (loop = 0; ; ++loop)
         {
 #ifdef NO_TIMER
-            if (loop > 20000)
+            if (loop > LOOP)
                 break;
 #else
             if (l_timer.get_elapsed() > tle)
@@ -1184,7 +1219,12 @@ public:
             if (nsol.used_indices().empty())
                 continue;
 
-            nsol = fill_space(nsol);
+            auto spaces = nsol.list_spaces(60, 60);
+            if (failed_list_spaces)
+                continue;
+
+            if (spaces.size() > 0)
+                nsol = fill_space(nsol, spaces);
             if (!nsol.used_indices().empty())
             {
                 assert(nsol.valid());
@@ -1192,7 +1232,9 @@ public:
 //                 assert(score == sum_sq_diff(target, nsol.make_collage()));
                 if (score < best_score)
                 {
-//                     fprintf(stderr, "%6d: %3d, %.5f\n", loop, (int)nsol.used_indices().size(), sqrt(double(score) / (target.width() * target.height())));
+//                     static int imp = 0;
+//                     ++imp;
+//                     fprintf(stderr, "%6d (%4d): %3d, %.5f\n", loop, imp, (int)nsol.used_indices().size(), sqrt(double(score) / (target.width() * target.height())));
                     best_score = score;
                     cur_score = score;
                     solution = nsol;
@@ -1203,6 +1245,9 @@ public:
                 }
             }
         }
+
+        dump(loop);
+        dump(solution.used_indices().size());
 
         return solution;
     }
@@ -1257,9 +1302,7 @@ public:
         for (Image& image : source)
             fixed_size_source.push_back(image.scale(FIXED_SIZE, FIXED_SIZE));
 
-//         vector<Rect> target_rects = grid_rects(target.width(), target.height(), 7, 7);
         double match_time_cost = g_timer.get_elapsed();
-//         Solution solution = match_images_fast(target_rects);
         Solution solution = init_solution();
         match_time_cost = g_timer.get_elapsed() - match_time_cost;
         assert(solution.valid());
