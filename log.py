@@ -54,7 +54,7 @@ def multi(seeds):
         sys.stdout.flush()
 
 try:
-#     single(range(1, 3))
-    multi(range(1, 100))
+    single(range(1, 20))
+#     multi(range(1, 20))
 finally:
     os.remove(copied_exe_path)

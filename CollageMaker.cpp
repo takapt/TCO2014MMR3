@@ -1047,6 +1047,9 @@ public:
         assert(rem_h >= 0);
 
         Dir dir = Dir(rand() % 4);
+        if (g_timer.get_elapsed() < 2000)
+            dir = Dir(rand() % 2 ? UP : DOWN);
+
         int div = (dir == LEFT || dir == RIGHT ? rem_w : rem_h);
         if (div == 0)
             return empty_solution();
@@ -1150,6 +1153,7 @@ public:
         Timer l_timer;
         l_timer.start();
 
+        bool updated_score = false;
         assert(solution.valid());
         ll cur_score = sum_sq_diff(target, solution.make_collage());
         ll best_score = cur_score;
@@ -1165,8 +1169,9 @@ public:
 
             Solution nsol;
             int ra = rand() % 10000;
-            if (ra < 15)
+            if (updated_score && ra < 15)
             {
+                updated_score = false;
 //                 double prev = score_collage(target, solution.make_collage());
 //                 nsol = match_images(solution.used_rects());
                 nsol = match_images_fast(solution.used_rects());
@@ -1174,10 +1179,7 @@ public:
 //                 fprintf(stderr, "%.4f -> %.4f\n", prev, cur);
             }
             else
-//             if (ra < 9000)
                 nsol = expand(solution);
-//             else
-//                 nsol = shrink(solution);
 
             if (nsol.used_indices().empty())
                 continue;
@@ -1194,6 +1196,8 @@ public:
                     best_score = score;
                     cur_score = score;
                     solution = nsol;
+
+                    updated_score = true;
 
                     ADD_SOLUTION_LOG(solution);
                 }
@@ -1223,15 +1227,40 @@ public:
         return diff_ssd;
     }
 
+    Solution init_solution()
+    {
+        ll best_score = ten(15);
+        Solution best;
+        for (int rows = 6; rows <= 8; ++rows)
+        {
+            for (int cols = 6; cols <= 8; ++cols)
+            {
+                vector<Rect> target_rects = grid_rects(target.width(), target.height(), rows, cols);
+                Solution sol = match_images_fast(target_rects);
+                if (sol.used_indices().empty())
+                    continue;
+
+                ll score = sum_sq_diff(target, sol.make_collage());
+                if (score < best_score)
+                {
+//                     fprintf(stderr, "%d %d\n", rows, cols);
+                    best_score = score;
+                    best = sol;
+                }
+            }
+        }
+        return best;
+    }
+
     Solution solve()
     {
         for (Image& image : source)
             fixed_size_source.push_back(image.scale(FIXED_SIZE, FIXED_SIZE));
 
-        vector<Rect> target_rects = grid_rects(target.width(), target.height(), 7, 7);
+//         vector<Rect> target_rects = grid_rects(target.width(), target.height(), 7, 7);
         double match_time_cost = g_timer.get_elapsed();
-//         Solution solution = match_images(target_rects);
-        Solution solution = match_images_fast(target_rects);
+//         Solution solution = match_images_fast(target_rects);
+        Solution solution = init_solution();
         match_time_cost = g_timer.get_elapsed() - match_time_cost;
         assert(solution.valid());
 
@@ -1288,6 +1317,8 @@ private:
     {
         int h = data[stream_i++];
         int w = data[stream_i++];
+        assert(h > 0);
+        assert(w > 0);
         Image image(w, h, data, stream_i);
         assert(stream_i <= (int)data.size());
         return image;
