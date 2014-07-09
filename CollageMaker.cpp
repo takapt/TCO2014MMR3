@@ -1,5 +1,6 @@
 #define NDEBUG
 
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -758,11 +759,11 @@ class Solution
 {
 public:
     Solution(Image& target, vector<Image>& source)
-        : target(&target), source(&source), rects(vector<Rect>(SOURCE_IMAGES, invalid_rect))
+        : target(&target), source(&source), rects(vector<Rect>(SOURCE_IMAGES, invalid_rect)), score(-1)
     {
     }
     Solution()
-        : target(nullptr), source(nullptr)
+        : target(nullptr), source(nullptr), score(-1)
     {
     }
 
@@ -871,11 +872,15 @@ public:
         return res;
     }
 
+
 private:
     Image* target;
     vector<Image>* source;
 
     vector<Rect> rects;
+
+public:
+    ll score;
 };
 
 
@@ -926,7 +931,7 @@ void output_solution_logs()
 #endif
 
 #ifdef LOCAL
-const double G_TLE = 3.5 * 1000;
+const double G_TLE = 6 * 1000;
 #else
 const double G_TLE = 9.8 * 1000;
 #endif
@@ -1078,13 +1083,8 @@ public:
         assert(rem_h >= 0);
 
         Dir dir = Dir(rand() % 4);
-#ifdef NO_TIMER
-        if (loop < LOOP * 0.2)
-            dir = Dir(rand() % 2 ? UP : DOWN);
-#else
         if (g_timer.get_elapsed() < G_TLE * 0.2)
             dir = Dir(rand() % 2 ? UP : DOWN);
-#endif
 
         int div = (dir == LEFT || dir == RIGHT ? rem_w : rem_h);
         if (div == 0)
@@ -1182,23 +1182,22 @@ public:
         return solution;
     }
 
-    int loop;
-    Solution improve(Solution solution, double tle)
+    Solution improve(Solution solution, double tle = 1e18)
     {
-        Timer l_timer;
-        l_timer.start();
-
         bool updated_score = false;
         assert(solution.valid());
-        ll cur_score = sum_sq_diff(target, solution.make_collage());
-        ll best_score = cur_score;
+//         ll cur_score = sum_sq_diff(target, solution.make_collage());
+//         ll best_score = cur_score;
+//         solution.score = sum_sq_diff(target, solution.make_collage());
+        ll best_score = solution.score;
+        int loop;
         for (loop = 0; ; ++loop)
         {
 #ifdef NO_TIMER
             if (loop > LOOP)
                 break;
 #else
-            if (l_timer.get_elapsed() > tle)
+            if (g_timer.get_elapsed() > tle)
                 break;
 #endif
 
@@ -1228,7 +1227,8 @@ public:
             if (!nsol.used_indices().empty())
             {
                 assert(nsol.valid());
-                ll score = cur_score + diff_sum_sq_diff(nsol, solution);
+//                 ll score = cur_score + diff_sum_sq_diff(nsol, solution);
+                ll score = solution.score + diff_sum_sq_diff(nsol, solution);
 //                 assert(score == sum_sq_diff(target, nsol.make_collage()));
                 if (score < best_score)
                 {
@@ -1236,8 +1236,9 @@ public:
 //                     ++imp;
 //                     fprintf(stderr, "%6d (%4d): %3d, %.5f\n", loop, imp, (int)nsol.used_indices().size(), sqrt(double(score) / (target.width() * target.height())));
                     best_score = score;
-                    cur_score = score;
+//                     cur_score = score;
                     solution = nsol;
+                    solution.score = score;
 
                     updated_score = true;
 
@@ -1274,8 +1275,8 @@ public:
 
     Solution init_solution()
     {
-        ll best_score = ten(15);
         Solution best;
+        best.score = ten(10);
         for (int rows = 6; rows <= 8; ++rows)
         {
             for (int cols = 6; cols <= 8; ++cols)
@@ -1286,11 +1287,11 @@ public:
                     continue;
 
                 ll score = sum_sq_diff(target, sol.make_collage());
-                if (score < best_score)
+                if (score < best.score)
                 {
 //                     fprintf(stderr, "%d %d\n", rows, cols);
-                    best_score = score;
                     best = sol;
+                    best.score = score;
                 }
             }
         }
@@ -1311,7 +1312,7 @@ public:
 
         dump(match_time_cost / 1000);
 
-        solution = improve(solution, G_TLE * 0.73 - match_time_cost);
+        solution = improve(solution, G_TLE * 0.73);
         assert(solution.valid());
 
         ADD_SOLUTION_LOG(solution);
